@@ -41,7 +41,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install maturin & pytest
-        run: pip install maturin pytest pytest-asyncio
+        run: pip install maturin pytest pytest-asyncio pytest-timeout
 
       - name: Format
         run: cargo fmt --all -- --check
