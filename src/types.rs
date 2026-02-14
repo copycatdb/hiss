@@ -1,7 +1,7 @@
+use crate::row_writer::CompactValue;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyFloat, PyInt, PyString};
 use std::cell::RefCell;
-use crate::row_writer::CompactValue;
 
 thread_local! {
     static DATETIME_CACHE: RefCell<Option<DateTimeCache>> = const { RefCell::new(None) };
@@ -29,28 +29,40 @@ fn get_datetime_cache(py: Python<'_>) -> PyResult<DateTimeCache> {
 }
 
 fn with_datetime<F, R>(py: Python<'_>, f: F) -> PyResult<R>
-where F: FnOnce(Python<'_>, &DateTimeCache) -> PyResult<R> {
+where
+    F: FnOnce(Python<'_>, &DateTimeCache) -> PyResult<R>,
+{
     DATETIME_CACHE.with(|cell| {
         let mut opt = cell.borrow_mut();
-        if opt.is_none() { *opt = Some(get_datetime_cache(py)?); }
+        if opt.is_none() {
+            *opt = Some(get_datetime_cache(py)?);
+        }
         f(py, opt.as_ref().unwrap())
     })
 }
 
 fn with_uuid_cls<F, R>(py: Python<'_>, f: F) -> PyResult<R>
-where F: FnOnce(Python<'_>, &Bound<'_, PyAny>) -> PyResult<R> {
+where
+    F: FnOnce(Python<'_>, &Bound<'_, PyAny>) -> PyResult<R>,
+{
     UUID_CACHE.with(|cell| {
         let mut opt = cell.borrow_mut();
-        if opt.is_none() { *opt = Some(py.import("uuid")?.getattr("UUID")?.unbind()); }
+        if opt.is_none() {
+            *opt = Some(py.import("uuid")?.getattr("UUID")?.unbind());
+        }
         f(py, opt.as_ref().unwrap().bind(py))
     })
 }
 
 fn with_decimal_cls<F, R>(py: Python<'_>, f: F) -> PyResult<R>
-where F: FnOnce(Python<'_>, &Bound<'_, PyAny>) -> PyResult<R> {
+where
+    F: FnOnce(Python<'_>, &Bound<'_, PyAny>) -> PyResult<R>,
+{
     DECIMAL_CACHE.with(|cell| {
         let mut opt = cell.borrow_mut();
-        if opt.is_none() { *opt = Some(py.import("decimal")?.getattr("Decimal")?.unbind()); }
+        if opt.is_none() {
+            *opt = Some(py.import("decimal")?.getattr("Decimal")?.unbind());
+        }
         f(py, opt.as_ref().unwrap().bind(py))
     })
 }
@@ -82,10 +94,19 @@ fn decimal_i128_to_string(value: i128, scale: u8) -> String {
     let abs = value.unsigned_abs();
     let s = abs.to_string();
     let scale = scale as usize;
-    let result = if scale == 0 { s }
-    else if s.len() <= scale { format!("0.{}{}", "0".repeat(scale - s.len()), s) }
-    else { let (i, f) = s.split_at(s.len() - scale); format!("{}.{}", i, f) };
-    if negative { format!("-{}", result) } else { result }
+    let result = if scale == 0 {
+        s
+    } else if s.len() <= scale {
+        format!("0.{}{}", "0".repeat(scale - s.len()), s)
+    } else {
+        let (i, f) = s.split_at(s.len() - scale);
+        format!("{}.{}", i, f)
+    };
+    if negative {
+        format!("-{}", result)
+    } else {
+        result
+    }
 }
 
 #[inline]
@@ -116,7 +137,9 @@ pub fn compact_value_to_py(py: Python<'_>, val: &CompactValue) -> PyResult<PyObj
             let d = doy - (153 * mp + 2) / 5 + 1;
             let m = if mp < 10 { mp + 3 } else { mp - 9 };
             let year = if m <= 2 { y + 1 } else { y };
-            with_datetime(py, |_py, cache| Ok(cache.date_cls.bind(py).call1((year, m, d))?.unbind()))
+            with_datetime(py, |_py, cache| {
+                Ok(cache.date_cls.bind(py).call1((year, m, d))?.unbind())
+            })
         }
         CompactValue::Time(nanos) => {
             let total_secs = (*nanos / 1_000_000_000) as u32;
@@ -124,20 +147,41 @@ pub fn compact_value_to_py(py: Python<'_>, val: &CompactValue) -> PyResult<PyObj
             let hour = total_secs / 3600;
             let minute = (total_secs % 3600) / 60;
             let second = total_secs % 60;
-            with_datetime(py, |_py, cache| Ok(cache.time_cls.bind(py).call1((hour, minute, second, micros))?.unbind()))
+            with_datetime(py, |_py, cache| {
+                Ok(cache
+                    .time_cls
+                    .bind(py)
+                    .call1((hour, minute, second, micros))?
+                    .unbind())
+            })
         }
         CompactValue::DateTime(micros) => {
-            let (year, month, day, hour, minute, second, remaining_micros) = micros_to_components(*micros);
-            with_datetime(py, |_py, cache| Ok(cache.datetime_cls.bind(py).call1((year, month, day, hour, minute, second, remaining_micros))?.unbind()))
+            let (year, month, day, hour, minute, second, remaining_micros) =
+                micros_to_components(*micros);
+            with_datetime(py, |_py, cache| {
+                Ok(cache
+                    .datetime_cls
+                    .bind(py)
+                    .call1((year, month, day, hour, minute, second, remaining_micros))?
+                    .unbind())
+            })
         }
         CompactValue::DateTimeOffset(micros, offset_minutes) => {
             let offset_micros = (*offset_minutes as i64) * 60 * 1_000_000;
             let local_micros = micros + offset_micros;
-            let (year, month, day, hour, minute, second, remaining_micros) = micros_to_components(local_micros);
+            let (year, month, day, hour, minute, second, remaining_micros) =
+                micros_to_components(local_micros);
             with_datetime(py, |_py, cache| {
-                let td = cache.timedelta_cls.bind(py).call1((0, *offset_minutes as i32 * 60))?;
+                let td = cache
+                    .timedelta_cls
+                    .bind(py)
+                    .call1((0, *offset_minutes as i32 * 60))?;
                 let tz = cache.timezone_cls.bind(py).call1((td,))?;
-                Ok(cache.datetime_cls.bind(py).call1((year, month, day, hour, minute, second, remaining_micros, tz))?.unbind())
+                Ok(cache
+                    .datetime_cls
+                    .bind(py)
+                    .call1((year, month, day, hour, minute, second, remaining_micros, tz))?
+                    .unbind())
             })
         }
     }
@@ -145,7 +189,9 @@ pub fn compact_value_to_py(py: Python<'_>, val: &CompactValue) -> PyResult<PyObj
 
 /// Convert a Python parameter to a SQL literal string for substitution.
 pub fn py_to_sql_literal(py: Python<'_>, param: &Bound<'_, PyAny>) -> PyResult<String> {
-    if param.is_none() { return Ok("NULL".to_string()); }
+    if param.is_none() {
+        return Ok("NULL".to_string());
+    }
     if param.is_instance_of::<PyBool>() {
         let v: bool = param.extract()?;
         return Ok(if v { "1".to_string() } else { "0".to_string() });
@@ -162,7 +208,9 @@ pub fn py_to_sql_literal(py: Python<'_>, param: &Bound<'_, PyAny>) -> PyResult<S
     if is_decimal {
         return Ok(param.str()?.to_string());
     }
-    let is_datetime = with_datetime(py, |_py, cache| param.is_instance(cache.datetime_cls.bind(py)))?;
+    let is_datetime = with_datetime(py, |_py, cache| {
+        param.is_instance(cache.datetime_cls.bind(py))
+    })?;
     if is_datetime {
         let year: i32 = param.getattr("year")?.extract()?;
         let month: u32 = param.getattr("month")?.extract()?;
@@ -172,9 +220,21 @@ pub fn py_to_sql_literal(py: Python<'_>, param: &Bound<'_, PyAny>) -> PyResult<S
         let second: u32 = param.getattr("second")?.extract()?;
         let microsecond: u32 = param.getattr("microsecond")?.extract()?;
         if microsecond > 0 {
-            return Ok(format!("CAST('{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:07}' AS DATETIME2(7))", year, month, day, hour, minute, second, microsecond * 10));
+            return Ok(format!(
+                "CAST('{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:07}' AS DATETIME2(7))",
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                microsecond * 10
+            ));
         }
-        return Ok(format!("'{:04}-{:02}-{:02} {:02}:{:02}:{:02}'", year, month, day, hour, minute, second));
+        return Ok(format!(
+            "'{:04}-{:02}-{:02} {:02}:{:02}:{:02}'",
+            year, month, day, hour, minute, second
+        ));
     }
     let is_date = with_datetime(py, |_py, cache| param.is_instance(cache.date_cls.bind(py)))?;
     if is_date {

@@ -1,23 +1,27 @@
 from __future__ import annotations
-import asyncio
-from functools import partial
-from .hiss_native import NativeConnection
+from .hiss_native import (
+    native_connect,
+    native_query,
+    native_execute,
+    native_execute_raw,
+    native_execute_many,
+    native_close,
+)
 from .record import Record
 from .transaction import Transaction
 
 
 class Connection:
-    """Async connection to SQL Server with asyncpg-style API."""
+    """Async connection to SQL Server — no run_in_executor, pure async bridge."""
 
-    def __init__(self, native: NativeConnection):
-        self._native = native
+    def __init__(self, conn_id: int):
+        self._id = conn_id
         self._closed = False
 
     async def fetch(self, query: str, *args) -> list[Record]:
-        """Execute a query and return all rows as Records."""
-        loop = asyncio.get_running_loop()
-        params = list(args)
-        result = await loop.run_in_executor(None, partial(self._native.query, query, params))
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+        result = await native_query(self._id, query, list(args))
         if result is None:
             return []
         col_names, values, row_count, col_count = result
@@ -29,44 +33,37 @@ class Connection:
         return records
 
     async def fetchrow(self, query: str, *args) -> Record | None:
-        """Execute a query and return the first row, or None."""
         rows = await self.fetch(query, *args)
         return rows[0] if rows else None
 
     async def fetchval(self, query: str, *args, column: int = 0):
-        """Execute a query and return a single value from the first row."""
         row = await self.fetchrow(query, *args)
         if row is None:
             return None
         return row[column]
 
     async def execute(self, query: str, *args) -> str:
-        """Execute a statement and return a status string."""
-        loop = asyncio.get_running_loop()
-        params = list(args)
-        return await loop.run_in_executor(None, partial(self._native.execute, query, params))
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+        return await native_execute(self._id, query, list(args))
 
     async def executemany(self, query: str, args_list) -> None:
-        """Execute a statement for each set of parameters."""
-        loop = asyncio.get_running_loop()
-        params = [list(a) for a in args_list]
-        await loop.run_in_executor(None, partial(self._native.execute_many, query, params))
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+        await native_execute_many(self._id, query, [list(a) for a in args_list])
 
     def transaction(self) -> Transaction:
-        """Create a transaction context manager."""
         return Transaction(self)
 
     async def close(self) -> None:
-        """Close the connection."""
         if not self._closed:
             self._closed = True
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self._native.close)
+            await native_close(self._id)
 
     async def _run_raw(self, sql: str) -> None:
-        """Execute raw SQL (for transaction control)."""
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, partial(self._native.execute_raw, sql))
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+        await native_execute_raw(self._id, sql)
 
     @property
     def is_closed(self) -> bool:
@@ -74,7 +71,5 @@ class Connection:
 
 
 async def connect(dsn: str, **kwargs) -> Connection:
-    """Connect to SQL Server and return an async Connection."""
-    loop = asyncio.get_running_loop()
-    native = await loop.run_in_executor(None, partial(NativeConnection.connect, dsn))
-    return Connection(native)
+    conn_id = await native_connect(dsn)
+    return Connection(conn_id)

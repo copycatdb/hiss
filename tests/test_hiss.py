@@ -290,3 +290,157 @@ async def test_execute_status(conn):
     await conn.execute("CREATE TABLE #st_test (id INT)")
     status = await conn.execute("INSERT INTO #st_test VALUES (1)")
     assert "1" in status  # "1 row(s) affected"
+
+
+# Connection used after close
+
+async def test_connection_after_close():
+    c = await hiss.connect(DSN)
+    await c.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        await c.fetch("SELECT 1")
+
+
+# Concurrent queries on same connection (serialized via tokio mutex)
+
+async def test_concurrent_same_conn(conn):
+    async def q(i):
+        return await conn.fetchval(f"SELECT {i}")
+    # These will serialize on the connection's tokio mutex
+    results = await asyncio.gather(*[q(i) for i in range(5)])
+    assert sorted(results) == list(range(5))
+
+
+# Pool exhaustion — more acquires than max_size should wait
+
+async def test_pool_exhaustion():
+    pool = await hiss.create_pool(DSN, min_size=1, max_size=2)
+    acquired = []
+    for _ in range(2):
+        ctx = pool.acquire()
+        conn = await ctx.__aenter__()
+        acquired.append((ctx, conn))
+
+    # Third acquire should block; use wait_for with timeout
+    async def try_acquire():
+        async with pool.acquire() as c:
+            return await c.fetchval("SELECT 1")
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(try_acquire(), timeout=0.3)
+
+    # Release one, now it should work
+    ctx0, conn0 = acquired.pop()
+    await ctx0.__aexit__(None, None, None)
+    val = await asyncio.wait_for(try_acquire(), timeout=2.0)
+    assert val == 1
+
+    # Cleanup
+    for ctx, conn in acquired:
+        await ctx.__aexit__(None, None, None)
+    await pool.close()
+
+
+# Pool close
+
+async def test_pool_close():
+    pool = await hiss.create_pool(DSN, min_size=2, max_size=3)
+    assert pool.get_size() >= 2
+    await pool.close()
+    assert pool.get_size() == 0
+
+
+# Empty result set
+
+async def test_empty_result(conn):
+    rows = await conn.fetch("SELECT 1 AS x WHERE 1=0")
+    assert rows == []
+
+
+# Datetime param round-trip
+
+async def test_datetime_param(conn):
+    import datetime
+    dt = datetime.datetime(2024, 6, 15, 10, 30, 45, 123456)
+    row = await conn.fetchrow("SELECT @p1 AS dt", dt)
+    assert row["dt"].year == 2024
+    assert row["dt"].month == 6
+    assert row["dt"].hour == 10
+
+
+# Date param round-trip
+
+async def test_date_param(conn):
+    import datetime
+    d = datetime.date(2024, 12, 25)
+    row = await conn.fetchrow("SELECT CAST(@p1 AS DATE) AS d", d)
+    assert row["d"] == d
+
+
+# UUID param round-trip
+
+async def test_uuid_param(conn):
+    import uuid
+    u = uuid.UUID('12345678-1234-1234-1234-123456789012')
+    row = await conn.fetchrow("SELECT CAST(@p1 AS UNIQUEIDENTIFIER) AS u", u)
+    assert row["u"] == u
+
+
+# Decimal param round-trip
+
+async def test_decimal_param(conn):
+    import decimal
+    d = decimal.Decimal("99.99")
+    row = await conn.fetchrow("SELECT CAST(@p1 AS DECIMAL(10,2)) AS d", d)
+    assert row["d"] == d
+
+
+# Bool param
+
+async def test_bool_param(conn):
+    row = await conn.fetchrow("SELECT @p1 AS b", True)
+    assert row["b"] == 1
+
+
+# Bytes param
+
+async def test_bytes_param(conn):
+    row = await conn.fetchrow("SELECT @p1 AS b", b"\x01\x02\x03")
+    assert row["b"] == b"\x01\x02\x03"
+
+
+# Pool concurrency — 20 concurrent queries
+
+async def test_pool_high_concurrency():
+    pool = await hiss.create_pool(DSN, min_size=3, max_size=10)
+    async def q(i):
+        return await pool.fetchval(f"SELECT {i}")
+    results = await asyncio.gather(*[q(i) for i in range(20)])
+    assert sorted(results) == list(range(20))
+    await pool.close()
+
+
+# Record .get() method
+
+async def test_record_get(conn):
+    row = await conn.fetchrow("SELECT 1 AS x")
+    assert row.get("x") == 1
+    assert row.get("missing", 42) == 42
+
+
+# Time type
+
+async def test_types_time(conn):
+    import datetime
+    row = await conn.fetchrow("SELECT CAST('10:30:45' AS TIME) AS t")
+    assert row["t"].hour == 10
+    assert row["t"].minute == 30
+    assert row["t"].second == 45
+
+
+# datetime2 type
+
+async def test_types_datetime2(conn):
+    row = await conn.fetchrow("SELECT CAST('2024-06-15 10:30:45.1234567' AS DATETIME2(7)) AS dt")
+    assert row["dt"].year == 2024
+    assert row["dt"].microsecond > 0

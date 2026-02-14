@@ -10,12 +10,11 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.23", features = ["extension-module"] }
 tabby = { git = "https://github.com/copycatdb/tabby.git", branch = "main", default-features = false, features = ["rustls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 tokio-rustls = "0.26"
 rustls = "0.23"
-once_cell = "1"
 chrono = "0.4"
 uuid = "1"
 rust_decimal = "1"
-futures-util = "0.3"
+parking_lot = "0.12"
