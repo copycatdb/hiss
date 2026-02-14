@@ -38,20 +38,20 @@ impl NumericData {
 
 #[pyclass]
 pub struct ParamInfo {
-    #[pyo3(get, set)]
-    pub paramCType: i32,
-    #[pyo3(get, set)]
-    pub paramSQLType: i32,
-    #[pyo3(get, set)]
-    pub inputOutputType: i32,
-    #[pyo3(get, set)]
-    pub columnSize: i64,
-    #[pyo3(get, set)]
-    pub decimalDigits: i32,
-    #[pyo3(get, set)]
-    pub isDAE: bool,
-    #[pyo3(get, set)]
-    pub dataPtr: PyObject,
+    #[pyo3(get, set, name = "paramCType")]
+    pub param_c_type: i32,
+    #[pyo3(get, set, name = "paramSQLType")]
+    pub param_sql_type: i32,
+    #[pyo3(get, set, name = "inputOutputType")]
+    pub input_output_type: i32,
+    #[pyo3(get, set, name = "columnSize")]
+    pub column_size: i64,
+    #[pyo3(get, set, name = "decimalDigits")]
+    pub decimal_digits: i32,
+    #[pyo3(get, set, name = "isDAE")]
+    pub is_dae: bool,
+    #[pyo3(get, set, name = "dataPtr")]
+    pub data_ptr: PyObject,
 }
 
 #[pymethods]
@@ -59,13 +59,13 @@ impl ParamInfo {
     #[new]
     fn new(py: Python<'_>) -> Self {
         ParamInfo {
-            paramCType: 0,
-            paramSQLType: 0,
-            inputOutputType: 0,
-            columnSize: 0,
-            decimalDigits: 0,
-            isDAE: false,
-            dataPtr: py.None().into(),
+            param_c_type: 0,
+            param_sql_type: 0,
+            input_output_type: 0,
+            column_size: 0,
+            decimal_digits: 0,
+            is_dae: false,
+            data_ptr: py.None().into(),
         }
     }
 }
@@ -194,8 +194,8 @@ fn escape_sql(s: &str) -> String {
 
 #[pyfunction]
 #[pyo3(signature = (stmt, sql, params, param_types, is_prepared, use_prepare))]
-#[allow(non_snake_case)]
-fn DDBCSQLExecute(
+#[pyo3(name = "DDBCSQLExecute")]
+fn ddbc_sql_execute(
     stmt: &mut StatementHandle,
     sql: &str,
     params: Vec<Bound<'_, PyAny>>,
@@ -208,14 +208,14 @@ fn DDBCSQLExecute(
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLRowCount(stmt: &StatementHandle) -> PyResult<i64> {
+#[pyo3(name = "DDBCSQLRowCount")]
+fn ddbc_sql_row_count(stmt: &StatementHandle) -> PyResult<i64> {
     Ok(stmt.cursor.rowcount())
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLDescribeCol(
+#[pyo3(name = "DDBCSQLDescribeCol")]
+fn ddbc_sql_describe_col(
     stmt: &StatementHandle,
     metadata: &Bound<'_, pyo3::types::PyList>,
 ) -> PyResult<()> {
@@ -235,8 +235,8 @@ fn DDBCSQLDescribeCol(
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLFetchOne(
+#[pyo3(name = "DDBCSQLFetchOne")]
+fn ddbc_sql_fetch_one(
     stmt: &mut StatementHandle,
     row_data: &Bound<'_, pyo3::types::PyList>,
 ) -> PyResult<i32> {
@@ -253,8 +253,8 @@ fn DDBCSQLFetchOne(
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLFetchMany(
+#[pyo3(name = "DDBCSQLFetchMany")]
+fn ddbc_sql_fetch_many(
     stmt: &mut StatementHandle,
     rows_data: &Bound<'_, pyo3::types::PyList>,
     size: usize,
@@ -269,8 +269,8 @@ fn DDBCSQLFetchMany(
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLFetchAll(
+#[pyo3(name = "DDBCSQLFetchAll")]
+fn ddbc_sql_fetch_all(
     stmt: &mut StatementHandle,
     rows_data: &Bound<'_, pyo3::types::PyList>,
 ) -> PyResult<i32> {
@@ -284,8 +284,8 @@ fn DDBCSQLFetchAll(
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLMoreResults(stmt: &mut StatementHandle) -> PyResult<i32> {
+#[pyo3(name = "DDBCSQLMoreResults")]
+fn ddbc_sql_more_results(stmt: &mut StatementHandle) -> PyResult<i32> {
     match stmt.cursor.nextset()? {
         true => Ok(0),
         false => Ok(100),
@@ -293,27 +293,27 @@ fn DDBCSQLMoreResults(stmt: &mut StatementHandle) -> PyResult<i32> {
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLSetStmtAttr(_stmt: &StatementHandle, _attr: i32, _value: i32) -> PyResult<i32> {
+#[pyo3(name = "DDBCSQLSetStmtAttr")]
+fn ddbc_sql_set_stmt_attr(_stmt: &StatementHandle, _attr: i32, _value: i32) -> PyResult<i32> {
     Ok(0)
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLGetAllDiagRecords(stmt: &StatementHandle) -> PyResult<Vec<(String, String)>> {
+#[pyo3(name = "DDBCSQLGetAllDiagRecords")]
+fn ddbc_sql_get_all_diag_records(stmt: &StatementHandle) -> PyResult<Vec<(String, String)>> {
     Ok(stmt.cursor.get_messages().to_vec())
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSetDecimalSeparator(_sep: &str) -> PyResult<()> {
+#[pyo3(name = "DDBCSetDecimalSeparator")]
+fn ddbc_set_decimal_separator(_sep: &str) -> PyResult<()> {
     Ok(())
 }
 
 #[pyfunction]
 #[pyo3(signature = (stmt, catalog, schema, table, types))]
-#[allow(non_snake_case)]
-fn DDBCSQLTables(
+#[pyo3(name = "DDBCSQLTables")]
+fn ddbc_sql_tables(
     stmt: &mut StatementHandle,
     catalog: &str,
     schema: &str,
@@ -362,8 +362,8 @@ fn DDBCSQLTables(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, catalog=None, schema=None, table=None, column=None))]
-#[allow(non_snake_case)]
-fn DDBCSQLColumns(
+#[pyo3(name = "DDBCSQLColumns")]
+fn ddbc_sql_columns(
     stmt: &mut StatementHandle,
     catalog: Option<&str>,
     schema: Option<&str>,
@@ -448,8 +448,8 @@ fn DDBCSQLColumns(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, catalog=None, schema=None, table=""))]
-#[allow(non_snake_case)]
-fn DDBCSQLPrimaryKeys(
+#[pyo3(name = "DDBCSQLPrimaryKeys")]
+fn ddbc_sql_primary_keys(
     stmt: &mut StatementHandle,
     catalog: Option<&str>,
     schema: Option<&str>,
@@ -483,8 +483,8 @@ fn DDBCSQLPrimaryKeys(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, fk_catalog=None, fk_schema=None, fk_table=None, pk_catalog=None, pk_schema=None, pk_table=None))]
-#[allow(non_snake_case)]
-fn DDBCSQLForeignKeys(
+#[pyo3(name = "DDBCSQLForeignKeys")]
+fn ddbc_sql_foreign_keys(
     stmt: &mut StatementHandle,
     fk_catalog: Option<&str>,
     fk_schema: Option<&str>,
@@ -552,8 +552,8 @@ fn DDBCSQLForeignKeys(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, catalog=None, schema=None, table="", unique=0, _reserved=0))]
-#[allow(non_snake_case)]
-fn DDBCSQLStatistics(
+#[pyo3(name = "DDBCSQLStatistics")]
+fn ddbc_sql_statistics(
     stmt: &mut StatementHandle,
     catalog: Option<&str>,
     schema: Option<&str>,
@@ -607,8 +607,8 @@ fn DDBCSQLStatistics(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, catalog=None, schema=None, procedure=None))]
-#[allow(non_snake_case)]
-fn DDBCSQLProcedures(
+#[pyo3(name = "DDBCSQLProcedures")]
+fn ddbc_sql_procedures(
     stmt: &mut StatementHandle,
     catalog: Option<&str>,
     schema: Option<&str>,
@@ -649,8 +649,8 @@ fn DDBCSQLProcedures(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, id_type, catalog=None, schema=None, table="", _scope=0, _nullable=0))]
-#[allow(non_snake_case)]
-fn DDBCSQLSpecialColumns(
+#[pyo3(name = "DDBCSQLSpecialColumns")]
+fn ddbc_sql_special_columns(
     stmt: &mut StatementHandle,
     id_type: i32,
     catalog: Option<&str>,
@@ -724,8 +724,8 @@ fn DDBCSQLSpecialColumns(
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLGetTypeInfo(stmt: &mut StatementHandle, sql_type: i32) -> PyResult<i32> {
+#[pyo3(name = "DDBCSQLGetTypeInfo")]
+fn ddbc_sql_get_type_info(stmt: &mut StatementHandle, sql_type: i32) -> PyResult<i32> {
     let type_filter = if sql_type == 0 {
         String::new()
     } else {
@@ -795,8 +795,8 @@ fn DDBCSQLGetTypeInfo(stmt: &mut StatementHandle, sql_type: i32) -> PyResult<i32
 }
 
 #[pyfunction]
-#[allow(non_snake_case)]
-fn DDBCSQLFetchScroll(
+#[pyo3(name = "DDBCSQLFetchScroll")]
+fn ddbc_sql_fetch_scroll(
     stmt: &mut StatementHandle,
     orientation: i32,
     offset: i64,
@@ -831,8 +831,8 @@ fn DDBCSQLFetchScroll(
 
 #[pyfunction]
 #[pyo3(signature = (stmt, sql, columnwise_params, param_types, row_count))]
-#[allow(non_snake_case)]
-fn SQLExecuteMany(
+#[pyo3(name = "SQLExecuteMany")]
+fn sql_execute_many(
     stmt: &mut StatementHandle,
     sql: &str,
     columnwise_params: Vec<Bound<'_, pyo3::types::PyList>>,
@@ -849,25 +849,25 @@ fn hiss_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<StatementHandle>()?;
     m.add_class::<NumericData>()?;
     m.add_class::<ParamInfo>()?;
-    m.add_function(wrap_pyfunction!(DDBCSQLExecute, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLRowCount, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLDescribeCol, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLFetchOne, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLFetchMany, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLFetchAll, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLMoreResults, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLSetStmtAttr, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLGetAllDiagRecords, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSetDecimalSeparator, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLTables, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLColumns, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLPrimaryKeys, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLForeignKeys, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLStatistics, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLProcedures, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLSpecialColumns, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLGetTypeInfo, m)?)?;
-    m.add_function(wrap_pyfunction!(DDBCSQLFetchScroll, m)?)?;
-    m.add_function(wrap_pyfunction!(SQLExecuteMany, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_execute, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_row_count, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_describe_col, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_fetch_one, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_fetch_many, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_fetch_all, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_more_results, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_set_stmt_attr, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_get_all_diag_records, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_set_decimal_separator, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_tables, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_columns, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_primary_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_foreign_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_statistics, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_procedures, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_special_columns, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_get_type_info, m)?)?;
+    m.add_function(wrap_pyfunction!(ddbc_sql_fetch_scroll, m)?)?;
+    m.add_function(wrap_pyfunction!(sql_execute_many, m)?)?;
     Ok(())
 }

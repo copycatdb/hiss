@@ -6,8 +6,8 @@ use tabby::SqlValue;
 
 use crate::row_writer::CompactValue;
 
-/// Cached Python module/class references — avoids repeated py.import() per value.
-/// Like pyodbc's static caches but thread-local for safety.
+// Cached Python module/class references — avoids repeated py.import() per value.
+// Like pyodbc's static caches but thread-local for safety.
 thread_local! {
     static DATETIME_CACHE: RefCell<Option<DateTimeCache>> = const { RefCell::new(None) };
     static UUID_CACHE: RefCell<Option<PyObject>> = const { RefCell::new(None) };
@@ -77,6 +77,7 @@ where
 /// Convert a tabby SqlValue to a Python object.
 /// Uses cached module references (pyodbc technique) to avoid repeated imports.
 #[inline]
+#[allow(dead_code)]
 pub fn sql_value_to_py(py: Python<'_>, data: &SqlValue<'static>) -> PyResult<PyObject> {
     match data {
         // Fast path: primitives — direct PyObject creation, no module imports
@@ -112,12 +113,12 @@ pub fn sql_value_to_py(py: Python<'_>, data: &SqlValue<'static>) -> PyResult<PyO
 
         SqlValue::Guid(Some(v)) => {
             let s = v.to_string();
-            with_uuid_cls(py, |py, cls| Ok(cls.call1((s,))?.unbind()))
+            with_uuid_cls(py, |_py, cls| Ok(cls.call1((s,))?.unbind()))
         }
 
         SqlValue::Numeric(Some(v)) => {
             let s = v.to_string();
-            with_decimal_cls(py, |py, cls| Ok(cls.call1((s,))?.unbind()))
+            with_decimal_cls(py, |_py, cls| Ok(cls.call1((s,))?.unbind()))
         }
 
         SqlValue::DateTime(Some(dt)) => {
@@ -294,15 +295,20 @@ pub fn compact_value_to_py(py: Python<'_>, val: &CompactValue) -> PyResult<PyObj
             with_decimal_cls(py, |_py, cls| Ok(cls.call1((s,))?.unbind()))
         }
         CompactValue::Date(unix_days) => {
-            // unix_days = days since Unix epoch (1970-01-01), from decode_direct
-            let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
-            let date = epoch + chrono::Duration::days(*unix_days as i64);
+            // unix_days = days since Unix epoch (1970-01-01)
+            // Use same civil calendar algorithm
+            let days = *unix_days + 719468i32; // shift to 0000-03-01 epoch
+            let era = if days >= 0 { days } else { days - 146096 } / 146097;
+            let doe = (days - era * 146097) as u32;
+            let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+            let y = yoe as i32 + era * 400;
+            let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+            let mp = (5 * doy + 2) / 153;
+            let d = doy - (153 * mp + 2) / 5 + 1;
+            let m = if mp < 10 { mp + 3 } else { mp - 9 };
+            let year = if m <= 2 { y + 1 } else { y };
             with_datetime(py, |_py, cache| {
-                Ok(cache
-                    .date_cls
-                    .bind(py)
-                    .call1((date.year(), date.month(), date.day()))?
-                    .unbind())
+                Ok(cache.date_cls.bind(py).call1((year, m, d))?.unbind())
             })
         }
         CompactValue::Time(nanos) => {
@@ -321,29 +327,21 @@ pub fn compact_value_to_py(py: Python<'_>, val: &CompactValue) -> PyResult<PyObj
             })
         }
         CompactValue::DateTime(micros) => {
-            // micros since Unix epoch → Python datetime
-            let (ndt, remaining_micros) = micros_to_naive(*micros);
+            let (year, month, day, hour, minute, second, remaining_micros) =
+                micros_to_components(*micros);
             with_datetime(py, |_py, cache| {
                 Ok(cache
                     .datetime_cls
                     .bind(py)
-                    .call1((
-                        ndt.year(),
-                        ndt.month(),
-                        ndt.day(),
-                        ndt.hour(),
-                        ndt.minute(),
-                        ndt.second(),
-                        remaining_micros,
-                    ))?
+                    .call1((year, month, day, hour, minute, second, remaining_micros))?
                     .unbind())
             })
         }
         CompactValue::DateTimeOffset(micros, offset_minutes) => {
-            // micros is UTC. Add offset to get local time for display.
             let offset_micros = (*offset_minutes as i64) * 60 * 1_000_000;
             let local_micros = micros + offset_micros;
-            let (ndt, remaining_micros) = micros_to_naive(local_micros);
+            let (year, month, day, hour, minute, second, remaining_micros) =
+                micros_to_components(local_micros);
             with_datetime(py, |_py, cache| {
                 let td = cache
                     .timedelta_cls
@@ -353,35 +351,40 @@ pub fn compact_value_to_py(py: Python<'_>, val: &CompactValue) -> PyResult<PyObj
                 Ok(cache
                     .datetime_cls
                     .bind(py)
-                    .call1((
-                        ndt.year(),
-                        ndt.month(),
-                        ndt.day(),
-                        ndt.hour(),
-                        ndt.minute(),
-                        ndt.second(),
-                        remaining_micros,
-                        tz,
-                    ))?
+                    .call1((year, month, day, hour, minute, second, remaining_micros, tz))?
                     .unbind())
             })
         }
     }
 }
 
-/// Convert microseconds since Unix epoch to NaiveDateTime + remaining micros.
-/// Uses chrono's date arithmetic instead of deprecated from_timestamp_opt.
-fn micros_to_naive(micros: i64) -> (NaiveDateTime, u32) {
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)
-        .unwrap()
-        .and_hms_opt(0, 0, 0)
-        .unwrap();
+/// Decompose microseconds since Unix epoch into (year, month, day, hour, min, sec, micros).
+/// Pure arithmetic — no chrono allocations.
+#[inline]
+fn micros_to_components(micros: i64) -> (i32, u32, u32, u32, u32, u32, u32) {
     let total_secs = micros.div_euclid(1_000_000);
     let remaining_micros = micros.rem_euclid(1_000_000) as u32;
-    let ndt = epoch
-        + chrono::Duration::seconds(total_secs)
-        + chrono::Duration::microseconds(remaining_micros as i64);
-    (ndt, remaining_micros)
+
+    let time_of_day = total_secs.rem_euclid(86400) as u32;
+    let hour = time_of_day / 3600;
+    let minute = (time_of_day % 3600) / 60;
+    let second = time_of_day % 60;
+
+    // Days since Unix epoch
+    let mut days = total_secs.div_euclid(86400) as i32;
+    // Shift to March 1, year 0 epoch for easier calendar math
+    days += 719468; // days from 0000-03-01 to 1970-01-01
+    let era = if days >= 0 { days } else { days - 146096 } / 146097;
+    let doe = (days - era * 146097) as u32; // day of era [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i32 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+
+    (year, m, d, hour, minute, second, remaining_micros)
 }
 
 /// Convert i128 + scale to decimal string like "-123.45"
