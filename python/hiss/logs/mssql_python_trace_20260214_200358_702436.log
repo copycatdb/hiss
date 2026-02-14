@@ -1,0 +1,7 @@
+2026-02-14 20:03:58,887 - INFO - test_007_logging.py - [Python Layer log] Testing file logging mode
+2026-02-14 20:03:58,905 - INFO - test_007_logging.py - [Python Layer log] Testing file + stdout logging mode
+2026-02-14 20:03:58,920 - INFO - test_007_logging.py - [Python Layer log] This is a Python layer test message
+2026-02-14 20:03:58,930 - DEBUG - test_007_logging.py - [Python Layer log] This is a DEBUG message
+2026-02-14 20:03:58,930 - INFO - test_007_logging.py - [Python Layer log] This is an INFO message
+2026-02-14 20:03:58,931 - WARNING - test_007_logging.py - [Python Layer log] This is a WARNING message
+2026-02-14 20:03:58,931 - ERROR - test_007_logging.py - [Python Layer log] This is an ERROR message
